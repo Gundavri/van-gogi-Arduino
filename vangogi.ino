@@ -1,135 +1,175 @@
 #include "matrix.h"
+#include <Servo.h> 
+#include <Stepper.h>
 
-const int pageHeight = 450;
-const int pageWidth = 320;
+const int servoPin = A0;
+Servo Servo1; 
+const int drawing = 169, notDrawing = 174;
 
-int motorR[4] = {2,3,4,5};
-int motorL[4] = {10,11,12,13};
+const int STEPS_PER_REVOLUTION = 2048;
+int fullTurn = 5100;
+const int CATCH_UP = 85;
 
-const int height = 842/pixel+1;
-const int width = 595/pixel+1;
+int gapCounter = 0;
 
-int stepForward = pageHeight / height;
+int SLP[4] = {2, 3, 4, 5}; //marcxena
+int SRP[4] = {10, 11, 12, 13}; //marjvena
 
-int RC[4] = {1, 1, 1, 1};
-int LC[4] = {1, 1, 1, 1};
+Stepper stepperL(STEPS_PER_REVOLUTION, SLP[0], SLP[2], SLP[1], SLP[3]); //marcxena
+Stepper stepperR(STEPS_PER_REVOLUTION, SRP[0], SRP[2], SRP[1], SRP[3]); //marjvena
 
-int counterR = 0;
-int counterL = 0;
+int counter = 0;
 
-int counter = 1;
+int stepMultiplier = 30;
+bool facingNorth = 1;
 
-int x = 0, y = 0;
+int x = 0;
 
-int direct = 1;
+bool down = 0;
 
-bool whenToTurnMore = 0;
+void setup(){
+  Servo1.attach(servoPin);
+  Servo1.write(drawing);
+  delay(2000); 
+  Servo1.write(notDrawing);
+  stepperL.setSpeed(20);
+  stepperR.setSpeed(20);
+  delay(5000);
+}
 
-void setup() {
-  for(int i = 0; i < 4; i++){
-    pinMode(motorR[i], OUTPUT);
-    pinMode(motorL[i], OUTPUT);
+void loop(){
+  if(x<151) drawColumn();
+}
+
+void drawColumn(){
+  if(arr[x]==0 && arr[x+1]==0){
+    goForward(1);
   }
-  digitalWrite(motorR[3], 0);
-  digitalWrite(motorL[3], 0);
-  Serial.begin(9600);
+  else {
+    stepMultiplier = 30;
+    if(facingNorth) fullTurn=5084;
+    else fullTurn=5112;
+    turn90();
+    String binary = toBinary();
+    draw(binary);
+    gapCounter++;
+    facingNorth = !facingNorth;
+    if(!facingNorth) fullTurn=5088;
+    else fullTurn=5104;
+    turn90();
+//    if(gapCounter<=3) 
+//    {
+//      if(facingNorth) stepMultiplier = 30;
+//      else stepMultiplier = 38;
+//    }
+//    else {
+//      if(facingNorth) stepMultiplier = 18;
+//      else stepMultiplier = 26;        
+//    }
+    if(facingNorth) stepMultiplier = 21;
+    else stepMultiplier = 25;      
+    goForward(1);
+  }
 }
 
-void loop() {
- spanThePage();
+void moveServo(bool next1){
+  if((down && next1) || (!down && !next1)) {
+    return;
+  }
+  if(down && !next1) {
+    Servo1.write(notDrawing);
+    delay(30);
+    down = 0;
+    return;
+  }
+  if(!down && next1) {
+    Servo1.write(drawing);
+    delay(30);
+    down=1;  
+    return;
+  }
 }
 
-void spanThePage(){
-  int last1 = -1;
-  for(int i = 0; i < height; i++){
-    if(matrix[x][i]){
-      last1 = i;
+void draw(String binary){
+  if(facingNorth){
+    for(int i = -1; i < 106; i++){
+      moveServo(binary[i+1]-'0');
+      goForward(0); 
     }
   }
-  if(last1!=-1){
-    turn();
-    draw(last1);
-    find1();
-    direct = -direct;
-    turn();
-  } else {
-    goForward();
-    y++;
+  else {
+    for(int i = 107; i >= 1; i--){
+      moveServo(binary[i-1]-'0');
+      goForward(0);
+    }  
   }
+  moveServo(0);
 }
 
-void find1(){
-  if(direct < 0) for(int i = y; i > 0; i += direct){
-  
+String toBinary(){
+  String result1 = "";
+  long long tmp = arr[x]; 
+  while(tmp!=0){
+    result1 = (tmp%2==1?"1":"0") + result1;
+    tmp/=2;
   }
-  else for(int i = y; i < height; i+=direct){
-  
+  for(int i = result1.length(); i < 53; i++){
+    result1 = "0" + result1;
   }
+  String result2 = "";
+  tmp = arr[x+1];
+  while(tmp!=0){
+    result2 = (tmp%2==1?"1":"0") + result2;
+    tmp/=2;
+  }
+  for(int i = result2.length(); i < 53; i++){
+    result2 = "0" + result2;
+  }
+  return result1+result2;
 }
 
-void draw(int last){
-    y = last;
-    for(int i = 0; i < last+1; i++){
-      if(matrix[x][i]) moveServo();
-      goForward();
-    }
-}
-
-void moveServo(){
-  
-}
-
-void turn(){
-  for(int i = 0; i < (whenToTurnMore?790/4+1:790/4); i++){
+void turn90(){
+  for(int i = 0; i < (fullTurn)/4; i++){
     spinForever();
-    delay(50);
-  }  
-  whenToTurnMore = !whenToTurnMore;
-}
-
-void goForward(){
-  
-}
-
-void oneStepForward(){
-  if(counterR > 3) counterR = 0;
-  if(counterL > 3) counterL = 0;
-  RC[counterR] = 0;
-  LC[counterL] = 0;
-  for(int i = 0; i < 4; i++){
-    digitalWrite(motorR[i], RC[i]);
-    digitalWrite(motorL[i], LC[i]);    
   }
-  RC[counterR++] = 1;
-  LC[counterL++] = 1;
-  delay(15);
 }
 
 void spinForever(){
-  if(direct == 1) {
-    if(counterR > 3) counterR = 0;
-    if(counterL > 3) counterL = 0;
-    RC[counterR] = 0;
-    LC[counterL] = 0; 
-    for(int i = 0; i < 4; i++){
-      digitalWrite(motorR[i], RC[i]);
-      digitalWrite(motorL[3-i], LC[i]);    
-    } 
-    RC[counterR++] = 1;
-    LC[counterL++] = 1;
-    delay(15);
+  if(facingNorth) {
+    turnLeft();
   }
   else {
-    if(counterR > 3) counterR = 0;
-    if(counterL > 3) counterL = 0;
-    RC[counterR] = 0;
-    LC[counterL] = 0; 
-    for(int i = 0; i < 4; i++){
-      digitalWrite(motorL[i], LC[i]);
-      digitalWrite(motorR[3-i], RC[i]);    
-    } 
-    RC[counterR++] = 1;
-    LC[counterL++] = 1;
-    delay(15);
+    turnRight();
   } 
+}
+
+void goForward(bool x_y){
+  for(int i = 0; i < stepMultiplier; i++){
+    oneStepForward();
+  }
+  x_y ? x+=2 : 1;  
+}
+
+void oneStepForward(){
+    if(counter != CATCH_UP) stepperL.step(1);
+    else counter = -1;
+    stepperR.step(1); 
+    delay(5);
+    counter++;
+}
+
+void turnRight() {
+   if(counter != CATCH_UP) stepperL.step(1);
+   else counter = -1;
+   stepperR.step(-1);
+   delay(5);
+   counter++;
+}
+
+void turnLeft() {
+   if(counter != CATCH_UP) stepperL.step(-1);
+   else counter = -1;
+   stepperR.step(1);
+   delay(5);
+   counter++;
 }
